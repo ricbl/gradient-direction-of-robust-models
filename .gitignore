@@ -1,0 +1,9 @@
+src/__pycache_
+src/direct_method/__pycache_
+src/indirect_method/__pycache_
+src/cgan/__pycache_
+src/cgan/__pycache_
+src/cgan/sync_batchnorm/__pycache__/*
+*.pyc
+runs/
+*.db
