@@ -219,6 +219,9 @@ class RobustTraining(TrainingLoop):
             adversarial = attacks.get_attack(self.opt, x, y, net_d, self.opt.attack_to_use_val, self.logits_loss_fn , epsilon, alpha_multiplier = self.opt.alpha_multiplier, k=self.opt.k_pgd_training)
             d_out_attack = net_d(adversarial)
             self.metric.add_score(y, d_out_attack, 'attacked_val_epsilon_' + str(epsilon), epsilon)
+            if self.opt.attack_to_use_val=='cwl2':
+                distances = torch.abs(d_x).squeeze(1)/torch.norm(gradients_logits.view([gradients_logits.size(0),-1]), dim = 1)
+                self.metric.add_score(torch.norm((adversarial-x).view([x.size(0),-1]), dim=1).unsqueeze(1), distances.unsqueeze(1) , 'robustness_vs_approximation')
 
 # calculates the norms of differents stages in the VRGAN algorithm. Mainly used
 # to check for norms in the spheres dataset

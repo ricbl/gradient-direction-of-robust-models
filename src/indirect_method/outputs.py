@@ -83,6 +83,27 @@ def plot_histogram(xhist):
     ax.grid(zorder=-100)
     ax.set_axisbelow(True)
 
+def plot_scatter(y_corr, y_pred):
+    plt.close('all')
+    plt.style.use('./plotstule.mplstyle')
+    _, ax = plt.subplots()
+    this_plot, = plt.plot(y_pred, y_corr,color='#00808020', marker='.',linestyle='',markeredgewidth=0.3, markeredgecolor='#00808032')
+    ylim = ax.get_ylim()
+    xlim = ax.get_xlim()
+    min_final_axis = min(ylim[1],xlim[1])
+    plt.plot([0, min_final_axis], [0, min_final_axis], color='#99cc00',  linestyle='dashed', lw=1., alpha = 0.5)
+    plt.ylabel('Robustness', fontsize=10)
+    plt.xlabel('Approximated Robustness', fontsize=10)
+    ax.set_ylim((0, ylim[1]))
+    ax.set_xlim((0, xlim[1]))
+    ax.yaxis.set_minor_locator(  AutoMinorLocator(5))
+    ax.xaxis.set_minor_locator(  AutoMinorLocator(5))
+    ax.yaxis.set_major_locator(  LinearLocator(6))
+    ax.xaxis.set_major_locator(  LinearLocator(6))
+    ax.yaxis.tick_right()
+    ax.grid(zorder=-100)
+    ax.set_axisbelow(True)
+
 def save_image(filepath, numpy_array):
     numpy_array = np.clip(numpy_array, -1, 1)
     im = Image.fromarray(((numpy_array*0.5 + 0.5)*255).astype('uint8'))
@@ -104,6 +125,7 @@ class Outputs():
         if output_suffix is not None:
             logging.info('output_suffix: ' + output_suffix)
         self.log_configs(opt)
+        self.attack_to_use_val = opt.attack_to_use_val
         self.writer = SummaryWriter(output_folder + '/tensorboard/')
         #get number of rows for the saved images as approximally the sqrt of the number of batch examples to save in the same image
         self.nrows_fixed = int(math.sqrt(opt.batch_size_val))-[(opt.batch_size_val%i==0) for i in range(int(math.sqrt(opt.batch_size_val)),0,-1)].index(True)
@@ -132,6 +154,16 @@ class Outputs():
         if 'cosine_similarity_gradient_vs_correctfn_val' in metrics.values.keys():
             plot_histogram([value.item() for value in metrics.values['cosine_similarity_gradient_vs_correctfn_val'] if (value!=float("-inf") and value!=float("inf") and value==value)])
             self.save_plt(self.output_folder+'/cosine_similarity_correct_val_'+str(epoch)+'.png')
+        if self.attack_to_use_val=='cwl2':
+            with open(self.output_folder+'/linearity_cwepsilons_'+str(epoch)+'.txt', 'w') as filehandle:
+                for listitem in metrics.values['y_true_robustness_vs_approximation']:
+                    filehandle.write('%s\n' % listitem)
+            with open(self.output_folder+'/linearity_apporximation_'+str(epoch)+'.txt', 'w') as filehandle:
+                for listitem in metrics.values['y_predicted_robustness_vs_approximation']:
+                    filehandle.write('%s\n' % listitem)
+             
+            plot_scatter(metrics.values['y_true_robustness_vs_approximation'], metrics.values['y_predicted_robustness_vs_approximation'])
+            self.save_plt(self.output_folder+'/linearity_scatter_'+str(epoch)+'.pdf')
         averages, score_epsilon = metrics.get_average()
         logging.info('Metrics for epoch: ' + str(epoch))
         for key, average in averages.items():
@@ -194,7 +226,7 @@ class Outputs():
     
     def save_models(self, net_d, suffix):
         torch.save(net_d.state_dict(), '{:}/state_dict_d_'.format(self.output_folder) + str(suffix)) 
-            
+    
     def save_batch(self, filepath, tensor):
         if tensor.ndim==4:
             tensor = permute_channel_last(tensor)
@@ -207,4 +239,7 @@ class Outputs():
             pass
         numpy_array = np.vstack(np.hsplit(np.hstack(numpy_array), self.nrows_fixed))
         save_image(filepath, numpy_array)
-    
+
+def save_plt(filepath):
+    plt.savefig(filepath, bbox_inches = 'tight', pad_inches = 0)
+    plt.show()

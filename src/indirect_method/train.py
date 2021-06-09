@@ -179,44 +179,90 @@ def calculate_jacobian(d_x, x):
                               create_graph=True, retain_graph=True, only_inputs=True)[0]
     return gradients
 
+#calculates c star, as defined in Theorem 1
+def get_closest_class_m(x,y,d_x):
+    chosen_class = torch.argmax(d_x, dim=1)
+    differences = torch.gather(d_x,1,chosen_class.unsqueeze(1))-d_x
+    gradients = calculate_jacobian(d_x, x)
+    indices = chosen_class.view([gradients.size(0),1]+[1]*(len(gradients.size())-2)).expand([gradients.size(0),1] + list(gradients.size()[2:]))
+    differences_gradients = torch.gather(gradients,1,indices) - gradients
+    distances = differences/torch.norm(differences_gradients.view([differences_gradients.size(0),differences_gradients.size(1),-1]), dim = 2)
+    distances.scatter_(1, chosen_class.unsqueeze(1), float('inf'))
+    return torch.argmin(distances, dim = 1)
+
+#calculates c tilde, according to Equation (5)
+def get_closest_class(x,y,d_x):
+    chosen_class = y
+    differences = torch.gather(d_x,1,chosen_class.unsqueeze(1))-d_x
+    gradients = calculate_jacobian(d_x, x)
+    indices = chosen_class.view([gradients.size(0),1]+[1]*(len(gradients.size())-2)).expand([gradients.size(0),1] + list(gradients.size()[2:]))
+    differences_gradients = torch.gather(gradients,1,indices) - gradients
+    distances = differences/torch.norm(differences_gradients.view([differences_gradients.size(0),differences_gradients.size(1),-1]), dim = 2)
+    distances.scatter_(1, y.unsqueeze(1), float('inf'))
+    return torch.argmin(distances, dim = 1)
+
+def get_alignment(x,y, index, d_x,closest_class,suffix, correct_gradient_fn, metric):
+    chosen_class = torch.argmax(d_x, dim=1)
+    gradient_chosen_class = torch.autograd.grad(outputs=(torch.gather(d_x,1,chosen_class.unsqueeze(1)).squeeze(1)).sum(), inputs=x,
+                          create_graph=True, retain_graph=True, only_inputs=True)[0]
+    gradient_y = torch.autograd.grad(outputs=(torch.gather(d_x,1,y.unsqueeze(1)).squeeze(1)).sum(), inputs=x,
+                          create_graph=True, retain_graph=True, only_inputs=True)[0]
+    gradient_closest_class_minus_gradient_correct_class = torch.autograd.grad(outputs=(torch.gather(d_x,1,closest_class.unsqueeze(1)).squeeze(1)-torch.gather(d_x,1,y.unsqueeze(1)).squeeze(1)).sum(), inputs=x,
+                          create_graph=True, retain_graph=True, only_inputs=True)[0]
+    gradients_generator = correct_gradient_fn(x,y, index).cuda()
+    indices = closest_class.view([gradients_generator.size(0),1]+[1]*(len(gradients_generator.size())-2)).expand([gradients_generator.size(0),1] + list(gradients_generator.size()[2:]))
+    correct_gradients = torch.gather(gradients_generator,1,indices)
+    
+    closest_class_m = get_closest_class_m(x,y,d_x)
+    gradient_closest_class_minus_gradient_correct_class_m = torch.autograd.grad(outputs=(torch.gather(d_x,1,closest_class_m.unsqueeze(1)).squeeze(1)-torch.gather(d_x,1,chosen_class.unsqueeze(1)).squeeze(1)).sum(), inputs=x,
+                          create_graph=True, retain_graph=True, only_inputs=True)[0]
+    for i in range(x.size(0)):
+        #calculates the baseline metric, given in Eq. 18 in the paper
+        metric.add_value('alpha_x_'+suffix, 
+            (torch.abs(penalties.get_cosine_similarity(x[i:i+1], gradient_chosen_class[i:i+1]))).mean())
+        #Calculates the baseline metric as defined in the 4th column of Table S2
+        metric.add_value('alpha_x_y_'+suffix, 
+            (torch.abs(penalties.get_cosine_similarity(x[i:i+1], gradient_y[i:i+1]))).mean())
+        #Calculates the baseline metric as defined in the 2nd column of Table S2
+        metric.add_value('alpha_x_diffy_'+suffix, 
+            (torch.abs(penalties.get_cosine_similarity(x[i:i+1], gradient_closest_class_minus_gradient_correct_class[i:i+1]))).mean())
+        #Calculates the baseline metric as defined in the 3rd column of Table S2
+        metric.add_value('alpha_x_diff_'+suffix, 
+            (torch.abs(penalties.get_cosine_similarity(x[i:i+1], gradient_closest_class_minus_gradient_correct_class_m[i:i+1]))).mean())
+        if correct_gradient_fn is not None:
+            #calculates the alignment metric, as proposed in Eq. 8 in the paper
+            metric.add_value('cosine_similarity_gradient_vs_correctfn_'+suffix, 
+                penalties.get_cosine_similarity(
+                    gradient_closest_class_minus_gradient_correct_class[i:i+1], 
+                    correct_gradients[i:i+1].detach()
+                ).mean())
+            
+            #Calculates the proposed metric, using the gradient as defined in the header of the 3rd column of Table S2
+            metric.add_value('cosine_similarity_gradient_vs_correctfn_diffm_'+suffix, 
+                penalties.get_cosine_similarity(
+                    gradient_closest_class_minus_gradient_correct_class_m[i:i+1], 
+                    correct_gradients[i:i+1].detach()
+                ).mean())
+            
+            #Calculates the proposed metric, using the gradient as defined in the header of the 5th column of Table S2
+            metric.add_value('cosine_similarity_gradient_vs_correctfn_m_'+suffix, 
+                penalties.get_cosine_similarity(
+                    gradient_chosen_class[i:i+1], 
+                    correct_gradients[i:i+1].detach()
+                ).mean())
+            
+            #Calculates the proposed metric, using the gradient as defined in the header of the 4th column of Table S2
+            metric.add_value('cosine_similarity_gradient_vs_correctfn_y_'+suffix, 
+                penalties.get_cosine_similarity(
+                    gradient_y[i:i+1], 
+                    correct_gradients[i:i+1].detach()
+                ).mean())
+
 # training of classifiers, considering three types: 
 # - baseline , vanilla supervised training
 # - Trained with loss penalty L_{\alpha}
 # - Adversarially-trained with PGD
-class RobustTraining(TrainingLoop):
-    
-    #calculates c tilde, according to Equation (5)
-    def get_closest_class(self,x,y,d_x):
-        chosen_class = torch.argmax(d_x, dim=1)
-        differences = torch.gather(d_x,1,chosen_class.unsqueeze(1))-d_x
-        gradients = calculate_jacobian(d_x, x)
-        indices = chosen_class.view([gradients.size(0),1]+[1]*(len(gradients.size())-2)).expand([gradients.size(0),1] + list(gradients.size()[2:]))
-        differences_gradients = torch.gather(gradients,1,indices) - gradients
-        distances = differences/torch.norm(differences_gradients.view([differences_gradients.size(0),differences_gradients.size(1),-1]), dim = 2)
-        distances.scatter_(1, y.unsqueeze(1), float('inf'))
-        return torch.argmin(distances, dim = 1)
-    
-    def get_alignment(self,x,y, index, d_x,closest_class,suffix):
-        chosen_class = torch.argmax(d_x, dim=1)
-        gradient_chosen_class = torch.autograd.grad(outputs=(torch.gather(d_x,1,chosen_class.unsqueeze(1)).squeeze(1)).sum(), inputs=x,
-                              create_graph=True, retain_graph=True, only_inputs=True)[0]
-        gradient_closest_class_minus_gradient_correct_class = torch.autograd.grad(outputs=(torch.gather(d_x,1,closest_class.unsqueeze(1)).squeeze(1)-torch.gather(d_x,1,y.unsqueeze(1)).squeeze(1)).sum(), inputs=x,
-                              create_graph=True, retain_graph=True, only_inputs=True)[0]
-        gradients_generator = self.correct_gradient_fn(x,y, index).cuda()
-        indices = closest_class.view([gradients_generator.size(0),1]+[1]*(len(gradients_generator.size())-2)).expand([gradients_generator.size(0),1] + list(gradients_generator.size()[2:]))
-        correct_gradients = torch.gather(gradients_generator,1,indices)
-        for i in range(x.size(0)):
-            #calculates the baseline metric, given in Eq. 18 in the paper
-            self.metric.add_value('alpha_x_val_'+suffix, 
-                (torch.abs(penalties.get_cosine_similarity(x[i:i+1], gradient_chosen_class[i:i+1]))).mean())
-            if self.correct_gradient_fn is not None:
-                #calculates the alignment metric, as proposed in Eq. 8 in the paper
-                self.metric.add_value('cosine_similarity_gradient_vs_correctfn_'+suffix, 
-                    penalties.get_cosine_similarity(
-                        gradient_closest_class_minus_gradient_correct_class[i:i+1], 
-                        correct_gradients[i:i+1].detach()
-                    ).mean())
-    
+class RobustTraining(TrainingLoop):    
     def get_penalty_loss(self,x,y, index, d_x,closest_class):
         chosen_class = y
         gradient_to_penalize = torch.autograd.grad(outputs=(-torch.gather(d_x,1,chosen_class.unsqueeze(1)).squeeze(1)+torch.gather(d_x,1,closest_class.unsqueeze(1)).squeeze(1)).sum(), inputs=x,
@@ -239,7 +285,7 @@ class RobustTraining(TrainingLoop):
         d_x = net_d(x)
         classifier_loss = self.loss_fn(d_x, y).mean()
         self.metric.add_value('vanilla_loss', classifier_loss)
-        closest_class = self.get_closest_class(x, y, d_x)
+        closest_class = get_closest_class(x, y, d_x)
         if self.opt.cosine_penalty:
             #if training with alignment penalty, calculates it and add to the classifier loss
             penalty_loss = self.get_penalty_loss(x,y,index,d_x,closest_class)
@@ -247,7 +293,7 @@ class RobustTraining(TrainingLoop):
             #putting together Eq. 9 from the paper
             classifier_loss += penalty_multiplier*penalty_loss
             self.metric.add_value('penalty_loss', penalty_loss)
-        self.get_alignment(x, y, index, d_x, closest_class, 'train')
+        get_alignment(x, y, index, d_x, closest_class, 'train', self.correct_gradient_fn, self.metric)
         optim_d.zero_grad()
         classifier_loss.backward()
         optim_d.step()
@@ -268,7 +314,7 @@ class RobustTraining(TrainingLoop):
         fixed_x.requires_grad=True
         fixed_d_x = net_d(fixed_x)
                               
-        closest_class = self.get_closest_class(fixed_x,fixed_y, fixed_d_x)
+        closest_class = get_closest_class(fixed_x,fixed_y, fixed_d_x)
         #save the gradients, for checking if it is more interpretable
         gradient_closest_class_minus_gradient_correct_class = torch.autograd.grad(outputs=(torch.gather(fixed_d_x,1,closest_class.unsqueeze(1)).squeeze(1)-torch.gather(fixed_d_x,1,fixed_y.unsqueeze(1)).squeeze(1)).sum(), inputs=fixed_x,
                               create_graph=True, retain_graph=True, only_inputs=True)[0]
@@ -301,8 +347,10 @@ class RobustTraining(TrainingLoop):
         x.requires_grad = True
         d_x = net_d(x)
         
-        closest_class = self.get_closest_class(x, y, d_x)
-        self.get_alignment(x,y, index, d_x,closest_class,'val')
+        if self.opt.attack_to_use_val=='cwl2':
+            gradients = calculate_jacobian(d_x, x)
+        closest_class = get_closest_class(x, y, d_x)
+        get_alignment(x,y, index, d_x,closest_class,'val', self.correct_gradient_fn, self.metric)
         
         if self.opt.dataset_to_use=='squares':
             # if it is the squares dataset, calculate alignment of the generated Delta x compared 
@@ -317,6 +365,13 @@ class RobustTraining(TrainingLoop):
             adversarial = attacks.get_attack(self.opt, x, y, net_d, self.opt.attack_to_use_val, self.loss_fn , epsilon, alpha_multiplier = self.opt.alpha_multiplier, k=self.opt.k_pgd_training)
             d_out_attack = net_d(adversarial)
             self.metric.add_score(y, d_out_attack, 'attacked_val_epsilon_' + str(epsilon), epsilon)
+            if self.opt.attack_to_use_val=='cwl2':
+                differences = torch.gather(d_x,1,y.unsqueeze(1))-d_x
+                indices = y.view([gradients.size(0),1]+[1]*(len(gradients.size())-2)).expand([gradients.size(0),1] + list(gradients.size()[2:]))
+                differences_gradients = torch.gather(gradients,1,indices) - gradients
+                distances = differences/torch.norm(differences_gradients.view([differences_gradients.size(0),differences_gradients.size(1),-1]), dim = 2)
+                distances.scatter_(1, y.unsqueeze(1), float('inf'))
+                self.metric.add_score(torch.linalg.norm((adversarial-x).view([x.size(0),-1]), dim=1).unsqueeze(1), torch.min(distances, dim = 1).values.unsqueeze(1) , 'robustness_vs_approximation')
 
 def main():
     #get user options/configurations

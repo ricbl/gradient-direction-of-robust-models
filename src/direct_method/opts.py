@@ -130,6 +130,8 @@ def get_opt():
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpus
     else:
         args.gpus = os.environ['CUDA_VISIBLE_DEVICES']
+    if args.attack_to_use_val=='cwl2':
+        args.epsilons_val_attack = [0]
     import platform
     args.python_version = platform.python_version()
     import torch

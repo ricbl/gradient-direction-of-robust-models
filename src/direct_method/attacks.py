@@ -5,6 +5,7 @@ import numpy as np
 from .advertorch import blackbox_attack
 def clip(input_tensor, min_tensor, max_tensor):
     return torch.max(torch.min(input_tensor, max_tensor), min_tensor)
+import advertorch
 
 #template class serving as basis for PGD attacks using any norm
 class PGDAttack(object):
@@ -112,11 +113,22 @@ def get_attack(opt, images, labels, model, attack_to_use, loss_fn, epsilon = 0.0
             attack_class = LinfPGDAttack
         elif attack_to_use=='l2':
             attack_class = L2PGDAttack
+        elif attack_to_use=='cwl2':
+            def single_pred(x):
+                #Square Attack requires a class by class output
+                logits = model(x)
+                return torch.cat((-logits,logits),1)
+            def cw_attack(opt, model, loss_fn, epsilon, k=40, alpha_multiplier=1):
+                return advertorch.attacks.CarliniWagnerL2Attack(predict=single_pred, num_classes=2, learning_rate = 0.02*alpha_multiplier, clip_min = -1)
+            attack_class = cw_attack
         if k is None:
             attack = attack_class(opt, model = model, loss_fn = loss_fn, epsilon = epsilon, alpha_multiplier=alpha_multiplier)
         else:
             attack = attack_class(opt, model = model, loss_fn = loss_fn, epsilon = epsilon, k=k, alpha_multiplier=alpha_multiplier)
-        adversarial = attack.perturb(images, labels)
+        if  attack_to_use=='cwl2':
+            adversarial = attack.perturb(images, labels.squeeze().long())
+        else:
+            adversarial = attack.perturb(images, labels)
     torch.set_grad_enabled(prev_grad_enabled)
     if original_model_mode:
         model.train()

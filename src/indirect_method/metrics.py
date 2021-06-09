@@ -7,6 +7,7 @@ is complete.
 
 import collections
 from .classifier import get_correct_examples
+import statistics
 
 def accuracy(y_corr, y_pred):
     assert(len(y_pred)==len(y_corr))
@@ -18,6 +19,7 @@ class Metrics():
         self.values = collections.defaultdict(list)
         self.score_fn = accuracy 
         self.registered_score = {}
+        self.attack_to_use_val = opt.attack_to_use_val
     
     def add_list(self, key, value):
         value = value.detach().cpu().tolist()
@@ -39,24 +41,29 @@ class Metrics():
                 continue
             sum_values = sum(element)
             self.average[key] = sum_values/float(n_values)
-        for suffix in self.registered_score.keys():
-            self.average['score_' + suffix] = self.score_fn(self.values['y_true_' + suffix], self.values['y_predicted_' + suffix])
-        previous_score_average = 0
-        previous_suffix = None
-        self.average['epsilon_0.5'] = 0
-        if len(list(self.registered_score.keys()))>0:
-            threshold = min(0.5,self.average['score_' + list(self.registered_score.keys())[-1]]-0.01)
-        
-        # for all epsilons
-        for suffix in self.registered_score.keys():
-            if self.registered_score[suffix]>=0:
-                self.score_epsilon[self.registered_score[suffix]] = self.average['score_' + suffix]
-            if self.average['score_' + suffix]>=threshold and previous_score_average<threshold:
-                if previous_suffix is not None:
-                    #calculate linear interpolation for finding where the curve crosses 0.5
-                    self.average['epsilon_0.5'] = (threshold-previous_score_average)*(self.registered_score[suffix]-self.registered_score[previous_suffix])/(self.average['score_' + suffix]-previous_score_average)+self.registered_score[previous_suffix]
-            previous_score_average = self.average['score_' + suffix]
-            previous_suffix = suffix
+        if self.attack_to_use_val=='cwl2':
+            self.average['score_cw'] = accuracy(self.values['y_true_attacked_val_epsilon_0'], self.values['y_predicted_attacked_val_epsilon_0'])
+            self.average['epsilon_0.5'] = statistics.median(self.values['y_true_robustness_vs_approximation'])
+            self.average['epsilon_average'] = sum(self.values['y_true_robustness_vs_approximation'])/len(self.values['y_true_robustness_vs_approximation'])
+        else:
+            for suffix in self.registered_score.keys():
+                self.average['score_' + suffix] = self.score_fn(self.values['y_true_' + suffix], self.values['y_predicted_' + suffix])
+            previous_score_average = 0
+            previous_suffix = None
+            self.average['epsilon_0.5'] = 0
+            if len(list(self.registered_score.keys()))>0:
+                threshold = min(0.5,self.average['score_' + list(self.registered_score.keys())[-1]]-0.01)
+            
+            # for all epsilons
+            for suffix in self.registered_score.keys():
+                if self.registered_score[suffix]>=0:
+                    self.score_epsilon[self.registered_score[suffix]] = self.average['score_' + suffix]
+                if self.average['score_' + suffix]>=threshold and previous_score_average<threshold:
+                    if previous_suffix is not None:
+                        #calculate linear interpolation for finding where the curve crosses 0.5
+                        self.average['epsilon_0.5'] = (threshold-previous_score_average)*(self.registered_score[suffix]-self.registered_score[previous_suffix])/(self.average['score_' + suffix]-previous_score_average)+self.registered_score[previous_suffix]
+                previous_score_average = self.average['score_' + suffix]
+                previous_suffix = suffix
         self.values = collections.defaultdict(list)
     
     def get_average(self):
