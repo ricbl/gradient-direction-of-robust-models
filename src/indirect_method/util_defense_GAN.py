@@ -2,14 +2,16 @@
 
 import torch
 
-def get_z_sets(model, y, data, n_classes, lr,norm_penalty_lambda, diff_loss, z_init, rec_iter = 200):
+def get_z_sets(model, y, data, n_classes, lr,norm_penalty_lambda, diff_loss, z_init, rec_iter = 200, output = None):
+    original_model_mode = model.training
     model.eval()
-    
+    prev_grad_enabled = torch.is_grad_enabled()
+    torch.set_grad_enabled(True)
     z_hat = z_init.clone()
     z_hat = z_hat.detach().requires_grad_()
     optimizer = torch.optim.Adam([z_hat], lr = lr)
     scaler =torch.cuda.amp.GradScaler()
-    
+    mse = torch.nn.MSELoss(reduction ='none').cuda()
     # iterations optimizing z_hat
     for iteration in range(rec_iter):            
         z_hat.grad = None
@@ -22,11 +24,14 @@ def get_z_sets(model, y, data, n_classes, lr,norm_penalty_lambda, diff_loss, z_i
             # measuring the distance between generated image fake_image 
             # and original image data
             # and the likelihood of the current z_hat
-            reconstruct_loss = reconstruct_loss + norm_penalty_lambda * diff_loss(z_hat,torch.zeros_like(z_hat)).mean()
+            reconstruct_loss = reconstruct_loss + norm_penalty_lambda * mse(z_hat,torch.zeros_like(z_hat)).mean()
         
         #optimize using autocast syntax
         scaler.scale(reconstruct_loss).backward()
         scaler.step(optimizer)
         scaler.update()
     
+    torch.set_grad_enabled(prev_grad_enabled)
+    if original_model_mode:
+        model.train()
     return z_hat.detach().clone()

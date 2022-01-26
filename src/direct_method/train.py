@@ -149,7 +149,7 @@ class RobustTraining(TrainingLoop):
     def train_fn(self,x,y,net_d,net_g,optim_d,optim_g):
         #sample adversarial example if using this training method
         if self.opt.attack_to_use_training!='none': 
-            adversarial = attacks.get_attack(self.opt, x, y, net_d, self.opt.attack_to_use_training, self.logits_loss_fn, self.opt.epsilon_attack_training, k=self.opt.k_pgd_training, alpha_multiplier = self.opt.alpha_multiplier)
+            adversarial = attacks.get_attack(self.opt, x, y, net_d, self.opt.attack_to_use_training, self.logits_loss_fn, self.opt.epsilon_attack_training, k=self.opt.k_steps_attack, alpha_multiplier = self.opt.alpha_multiplier)
             x = adversarial.detach()
             x.requires_grad = True
         
@@ -179,7 +179,7 @@ class RobustTraining(TrainingLoop):
             adversarial = attacks.get_attack(self.opt, fixed_x, fixed_y, net_d, self.opt.attack_to_use_val, self.logits_loss_fn, epsilon=0.1, alpha_multiplier = self.opt.alpha_multiplier)
             self.output.log_adversarial( 'val_attack' + '{:05d}'.format(epoch_index) , adversarial)
             if self.opt.attack_to_use_training!='none':
-                adversarial  = attacks.get_attack(self.opt, fixed_x, fixed_y, net_d, self.opt.attack_to_use_training, self.logits_loss_fn, self.opt.epsilon_attack_training, k=self.opt.k_pgd_training, alpha_multiplier = self.opt.alpha_multiplier)
+                adversarial  = attacks.get_attack(self.opt, fixed_x, fixed_y, net_d, self.opt.attack_to_use_training, self.logits_loss_fn, self.opt.epsilon_attack_training, k=self.opt.k_steps_attack, alpha_multiplier = self.opt.alpha_multiplier)
                 self.output.log_adversarial('attack_with_train_opts' + '{:05d}'.format(epoch_index), adversarial)
             
             prev_grad_enbled = torch.is_grad_enabled()
@@ -216,7 +216,7 @@ class RobustTraining(TrainingLoop):
         self.metric.add_score(y, d_x, 'val', epsilon = 0)
         #adding the predictions of the adversarial attack calculated for several epsilons
         for epsilon in self.opt.epsilons_val_attack:
-            adversarial = attacks.get_attack(self.opt, x, y, net_d, self.opt.attack_to_use_val, self.logits_loss_fn , epsilon, alpha_multiplier = self.opt.alpha_multiplier, k=self.opt.k_pgd_training)
+            adversarial = attacks.get_attack(self.opt, x, y, net_d, self.opt.attack_to_use_val, self.logits_loss_fn , epsilon, alpha_multiplier = self.opt.alpha_multiplier, k=self.opt.k_steps_attack)
             d_out_attack = net_d(adversarial)
             self.metric.add_score(y, d_out_attack, 'attacked_val_epsilon_' + str(epsilon), epsilon)
             if self.opt.attack_to_use_val=='cwl2':

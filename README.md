@@ -6,20 +6,22 @@ The main objective of the paper is to quantitatively answer the question "To wha
 The COPD dataset used in the paper is private and is not available for outside investigators. The respective code is only provided for reference purposes.
 
 ## Setup
-* To install all the needed libraries, you can use the `requirements_indirect.sh` and `requirements_direct.sh` files. They assumes you have [conda or miniconda](https://docs.conda.io/en/latest/) installed and creates conda environments called `gdrm_indirect` and `gdrm_direct`, with prerequisites installed. Activate the environment before running the code, using `conda activate gdrm_indirect` or `conda activate gdrm_direct`, for running experiments with the indirect method for estimating <img src="https://render.githubusercontent.com/render/math?math=\Delta x"> (Section 2.3.2 in the paper), or running experiments with the direct method for estimating <img src="https://render.githubusercontent.com/render/math?math=\Delta x"> (Section 2.3.1 in the paper), respectively. 
+* To install all the needed libraries, you can use the `requirements_indirect.sh` and `requirements_direct.sh` files. They assumes you have [conda or miniconda](https://docs.conda.io/en/latest/) installed and creates conda environments called `gdrm_indirect` and `gdrm_direct`, with prerequisites installed. Activate the environment before running the code, using `conda activate gdrm_indirect` or `conda activate gdrm_direct`, for running experiments with the indirect method for estimating <img src="https://render.githubusercontent.com/render/math?math=\Delta x"> (Section 2.3.2 in the paper), or running experiments with the direct method for estimating <img src="https://render.githubusercontent.com/render/math?math=\Delta x"> (Section 2.3.1 in the paper), respectively.
+* Each folder inside the `src/` folder has its own `requirements.txt` listing imported libraries and versions.
 
 ## Usage
 Check the file running_commands.csv for commands used for all training and validation done for the paper and results presented here.
 * All commands select the GPU indexed by 0, but you can change the argument `gpus`  according to your needs. 
 * For the test commands, replace the `<timestamps-id>` expression with the respective value of the training experiment folder. 
 * For the test commands with the CIFAR-10 dataset, replace the `<best_epoch>` expression with the best epoch in terms of epsilon_0.5 considering values from epoch 33 to epoch 100.
+* For the ImageNet command, replace the `<robustbench_model_name>` expression with the desired model from [the Linf eps=4/255 ImageNet RobustBench leaderboard](https://github.com/RobustBench/robustbench#linf-eps4255). 
 * You can run `python -m src.indirect_method.train --help` and `python -m src.direct_method.train --help` to see all available options for modifying the runs. 
 * All commands should be run from the project base folder. 
 * To check test scores, open the log.txt file inside the experiment folder (`./runs/...`). 
 * The first time some datasets are used, H5 files are created for faster loading of datasets in subsequent runs, so the first run may take an unusually long time to start producing outputs.
 
 ## Results of pre-trained models
-Example pre-trained models are available at [fhttps://www.sci.utah.edu/~datasets/gradient-direction-of-robust-models/pretrained_models.zip](https://www.sci.utah.edu/~datasets/gradient-direction-of-robust-models/pretrained_models.zip). To get the numbers provided in the tables below, use the commands provided in running_commands.csv, replacing the respective `--load_checkpoint_g=` and `--load_checkpoint_d=` with the respective paths to the provided pre-trained models. For the MNIST-3/5, MNIST, and CIFAR-10 datasets, use the `generator` folder for training the models with the cosine alignment penalty, and the `generator_reference` folder for testing the alignment of the robust methods. For example, for generating the result generator alignments and images for the Squares dataset, use 
+Example pre-trained models are available at [https://www.sci.utah.edu/~datasets/gradient-direction-of-robust-models/pretrained_models.zip](https://www.sci.utah.edu/~datasets/gradient-direction-of-robust-models/pretrained_models.zip). To get the numbers provided in the tables below, use the commands provided in running_commands.csv, replacing the respective `--load_checkpoint_g=` and `--load_checkpoint_d=` with the respective paths to the provided pre-trained models. For the MNIST-3/5, MNIST, and CIFAR-10 datasets, use the `generator` folder for training the models with the cosine alignment penalty, and the `generator_reference` folder for testing the alignment of the robust methods. For example, for generating the result generator alignments and images for the Squares dataset, use 
 
 `python -m src.train --experiment=square_vrgan_test --gpus=0 --nepochs=1 --dataset_to_use=squares --skip_train=true --split_validation=test  --vrgan_training=true  --load_checkpoint_g=./pretrained_models/square/generator/state_dict_g_best_epoch`
 
@@ -98,10 +100,11 @@ All the outputs of the model are saved in the `runs` folder, inside a folder for
   * state_dict_d_best_epoch: checkpoint for the classifier model for the epoch with the highest validation score.
   * log.txt: a way to check the configurations used for that run and check the losses and scores of the model in text format, without loading tensorboard.
   * command: command used to run the python script, including all the parser arguments.
+  * csv_file.csv: table containing per-example statistics for the alignment from all classes as described in Table 6, Section 3.4 from the paper.
 
 ## Credits for external code
 * The code included in `src/cgan/` was cloned from https://github.com/ilyakava/BigGAN-PyTorch and modified to include more datasets. The code included in `src/indirect_method/bg` is copied from the same repository, but only includes the code necessary to run a loaded generator.
-* The code included in `src/.../advertorch` was copied from https://github.com/BorealisAI/advertorch/pull/74/files and slightly modified.
+* The code included in `src/.../advertorch` was copied from https://github.com/BorealisAI/advertorch/pull/74/files and https://github.com/BorealisAI/advertorch/blob/c18b5882b2c1eb2a3f650c8c9296b920e6635521/advertorch/attacks/spatial.py and slightly modified.
 * The code included in `src/indirect_method/util_defense_GAN.py` was inspired by https://raw.githubusercontent.com/sky4689524/DefenseGAN-Pytorch/master/util_defense_GAN.py
 
 ## License

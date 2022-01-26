@@ -1,3 +1,7 @@
+Most files of this repository are realeased under MIT License.
+Exception:
+- Files in src/indirect_method/advertorch/ and src/direct_method/advertorch/ are licensed under the GNU LESSER GENERAL PUBLIC LICENSE Version 3. Their LICENSE files are inside their respective folders.
+
 MIT License
 
 Copyright (c) 2020 Ricardo Bigolin Lanfredi

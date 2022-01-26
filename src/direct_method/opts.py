@@ -60,7 +60,7 @@ def get_opt():
     parser.add_argument('--cosine_penalty', type=str2bool, nargs='?', default='false',
                                     help='If true, applies the alignment penalty from equation (9) in the paper.')
     parser.add_argument('--vrgan_training', type=str2bool, nargs='?', default='false',
-                                    help='If true, trains the generative model for estimating the closest example of the opposite class using the modified VRGAN method (section 2.2).')
+                                    help='If true, trains the generative model for estimating the closest example of the opposite class using the modified VRGAN method (section 2.3.1).')
     parser.add_argument('--lambda_penalty', type=float, nargs='?', default=0.1,
                                 help='The constant that multiplies the alignment penalty, as defined in equation (9) in the paper.')
     parser.add_argument('--epsilons_val_attack', type=float, nargs='*', default=[],
@@ -107,7 +107,7 @@ def get_opt():
         args.function_to_compare_validation_metric = lambda x,y:x>=y
         args.initialization_comparison = float('-inf')
     #number of update steps during calculation of PGD attacks, for both training and validation
-    args.k_pgd_training = 40
+    args.k_steps_attack = 40
     #learning rates values for generator and critic
     args.learning_rate_g = 1e-4
     args.learning_rate_d = 1e-4

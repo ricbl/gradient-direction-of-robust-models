@@ -74,8 +74,6 @@ def get_opt():
                                     help='If true, adversarial examples will be calculated using a black-box attack instead of PGD')
     parser.add_argument('--skip_validation', type=str2bool, nargs='?', default='false',
                                     help='If true, skips the whole validation.')
-    parser.add_argument('--resnet_n_layers', type=int, nargs='?', default = 18,
-                                    help='Set the number of layers in the Resnet used as classifier. Only accepts the subset defined by torchvision.')
     parser.add_argument('--learning_rate_d', type=float, nargs='?', default = 1e-4,
                                     help='Set the learning rate for learning the classifier')
     parser.add_argument('--skip_long_validation', type=str2bool, nargs='?', default='false',
@@ -100,6 +98,23 @@ def get_opt():
                                 help='Sets a list of image indices that will be used to limit the iages loaded for the validation/test set.')
     parser.add_argument('--force_closest_class', type=int, nargs='*', default=None,
                                 help='Forces a destination class for the gradients calculated during validation of the fixed set of images.')
+    
+    parser.add_argument('--use_robust_bench_model', type=str, nargs='?', default='Standard',
+                                    help='Check names in https://github.com/RobustBench/robustbench#model-zoo')
+    parser.add_argument('--use_robust_bench_threat', type=str, nargs='?', default='Linf',
+                                    help='Use "Linf", "L2", "corruptions"')
+    parser.add_argument('--use_robust_bench_dataset', type=str, nargs='?', default='imagenet',
+                                    help='Use "cifar10", "cifar100", "imagenet"')
+    parser.add_argument('--use_robust_bench', type=str2bool, nargs='?', default='false',
+                                    help='Set it to true if you would like to load a robust model from RobustBench')
+    parser.add_argument('--imagenet_location', type=str, nargs='?', default='./imagenet_5000/',
+                                    help='Folder containing the 5,000 selected images from the ImageNet dataset')
+    parser.add_argument('--skip_alignment', type=str2bool, nargs='?', default='false',
+                                    help='If True, the alignment will not be calculated during validation.')
+    
+    parser.add_argument('--test_hypothesis_linearity', type=str2bool, nargs='?', default='false',
+                                    help='If True, a file named csv_table.csv will be created containing statistics of linearized distance and alignment for each validation example.')
+    
     args = parser.parse_args()
     
     #sets of configs that will likely not need to be modified
@@ -108,8 +123,8 @@ def get_opt():
     args.function_to_compare_validation_metric = lambda x,y:x>=y
     args.initialization_comparison = float('-inf')
     #number of update steps during calculation of PGD attacks, for both training and validation
-    args.k_pgd_training = 40
-    
+    args.k_steps_attack = 40
+
     #gets the current time of the run, and adds a four digit number for getting
     #different folder name for experiments run at the exact same time.
     timestamp = time.strftime("%Y%m%d-%H%M%S") + '-' + str(randint(1000,9999))
@@ -138,6 +153,11 @@ def get_opt():
         args.n_channels = 3
         args.im_size = 32
         args.im_size_g = 32
+    elif args.dataset_to_use=='imagenet':
+        args.n_classes = 1000
+        args.n_channels = 3
+        args.im_size = 224
+        args.im_size_g = 224
     args.list_of_class = range(args.n_classes)
     import platform
     args.python_version = platform.python_version()
